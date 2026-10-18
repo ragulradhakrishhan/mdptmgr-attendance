@@ -1,0 +1,50 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate Android project
+        run: flutter create --platforms=android --org com.mdptmgr --project-name mdptmgr_attendance .
+
+      - name: Configure Android (minSdk, internet, app name)
+        run: |
+          sed -i 's/flutter\.minSdkVersion/23/' android/app/build.gradle*
+          sed -i 's/android:label="[^"]*"/android:label="MDPTMGR Attendance"/' android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' android/app/src/main/AndroidManifest.xml
+
+      - run: flutter pub get
+      - run: flutter build apk --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MDPTMGR-Attendance-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Publish APK as a GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp build/app/outputs/flutter-apk/app-release.apk MDPTMGR-Attendance.apk
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest MDPTMGR-Attendance.apk --title "MDPTMGR Attendance APK" --notes "Latest build" --target "${{ github.sha }}"
